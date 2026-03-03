@@ -2,6 +2,9 @@ from typing import Tuple
 import pandas as pd
 from pathlib import Path
 import matplotlib.pyplot as plt
+from scipy import signal
+import numpy as np
+import re
 
 
 def load_data(
@@ -73,11 +76,11 @@ def preprocess_data(
         The preprocessed EMG data.
     """
     # move the first row to the header
-    data.columns = data.iloc[0]
-    data = data[1:]
+    data.columns = pd.Index(data.iloc[0])
 
-    # convert values to numeric, ignoring errors
-    data = data.replace(',', '.', regex=True).apply(
+    # convert values to numeric only in columns 1 and 2, ignoring errors
+    cols = data.columns[1:3]
+    data[cols] = data[cols].replace(',', '.', regex=True).apply(
         pd.to_numeric, errors='coerce')
 
     return data
@@ -120,19 +123,69 @@ def plot_data(
     plt.show()
 
 
+def stft_plot(
+        data: pd.Series,
+        fs: int,
+        strings: list[str]
+        ) -> None:
+    """
+    Plots the Short-Time Fourier Transform (STFT) of the EMG data.
+    Parameters
+    ----------
+    data : pd.Series
+        The EMG data to be analyzed and plotted.
+    fs : int
+        The sampling frequency of the EMG data.
+    strings : list[str]
+        A list of strings to be used in the plot title and labels.
+    """
+    f, t, Zxx = signal.stft(data, fs=fs, nperseg=256)
+    plt.figure(figsize=(15, 8))
+    plt.pcolormesh(t, f, np.abs(Zxx), shading='gouraud')
+    plt.title(f"{strings[0]} - Short-Time Fourier Transform")
+    plt.ylabel('Frequency [Hz]')
+    plt.xlabel('Time [sec]')
+    plt.colorbar(label='Magnitude')
+    plt.tight_layout()
+    plt.show()
+
+
 def main() -> None:
     """
     The main function of the script. It loads, preprocesses, and plots the EMG
     data from the specified files.
     """
     # load data
+    extra_data = []
     total_data = pd.DataFrame()
     path = Path(__file__).parent / "data"
     for file in path.glob("*.txt"):
         print(f"Processing file: {file}")
         stats, markers, data = load_data(file)
+        extra_data.append(pd.DataFrame(stats.iloc[1, :]).T)
         data = preprocess_data(data)
         total_data = pd.concat([total_data, data], ignore_index=True)
+
+    # calculate sampling frequency (hh:mm:ss)
+    length_1 = extra_data[0].iloc[-1].values[-1]
+    length_2 = extra_data[1].iloc[-1].values[-1]
+    print(f"Length of file 1: {length_1}")
+    print(f"Length of file 2: {length_2}")
+    time_pattern = r"(\d{2}):(\d{2}):(\d{2})"
+    match_1 = re.match(time_pattern, length_1)
+    match_2 = re.match(time_pattern, length_2)
+    if match_1 and match_2:
+        hours_1, minutes_1, seconds_1 = map(int, match_1.groups())
+        hours_2, minutes_2, seconds_2 = map(int, match_2.groups())
+        total_seconds_1 = hours_1 * 3600 + minutes_1 * 60 + seconds_1
+        total_seconds_2 = hours_2 * 3600 + minutes_2 * 60 + seconds_2
+        total_time = total_seconds_1 + total_seconds_2
+        total_samples = len(total_data)
+        fs = total_samples / total_time
+        print(f"Sampling frequency: {fs:.2f} Hz")
+    else:
+        print("Error: Time format is incorrect. Expected format is hh:mm:ss.")
+        return
 
     # plot data
     plot_data(
@@ -140,6 +193,7 @@ def main() -> None:
         total_data.iloc[:, 2],
         ["Total Data"],
         window_size=15)
+
 
 if __name__ == "__main__":
     main()
