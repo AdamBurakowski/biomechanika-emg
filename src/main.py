@@ -84,10 +84,11 @@ def preprocess_data(
 
 
 def plot_data(
-    data_1: pd.Series,
-    data_2: pd.Series,
-    strings: list[str]
-    ) -> None:
+        data_1: pd.Series,
+        data_2: pd.Series,
+        strings: list[str],
+        window_size: int = 25
+        ) -> None:
     """
     Plots the EMG data.
 
@@ -100,19 +101,22 @@ def plot_data(
     strings : list[str]
         A list of strings to be used in the plot title and labels.
     """
-    fig, axs = plt.subplots(3, 1, figsize=(15, 8))
+    moving_avg_1 = data_1.rolling(window=window_size).mean()
+    moving_avg_2 = data_2.rolling(window=window_size).mean()
+    fig, axs = plt.subplots(2, 1, figsize=(15, 8))
     axs[0].plot(range(len(data_1)), data_1, label="channel 1")
-    axs[1].plot(range(len(data_2)), data_2, label="channel 2")
-    axs[2].plot(range(len(data_1)), data_1, label="channel 1")
-    axs[2].plot(range(len(data_2)), data_2, label="channel 2")
-    axs[0].set_title(strings[0])
-    axs[0].legend()
-    axs[0].set_xlabel("Index")
-    axs[1].legend()
-    axs[1].set_xlabel("SIndex")
-    axs[2].legend()
-    axs[2].set_xlabel("Index")
-    plt.ylabel("EMG Signal")
+    axs[0].plot(range(len(data_2)), data_2, label="channel 2")
+    axs[1].plot(range(len(moving_avg_1)),
+                moving_avg_1, label="channel 1 (moving avg)")
+    axs[1].plot(range(len(moving_avg_2)),
+                moving_avg_2, label="channel 2 (moving avg)")
+    axs[0].set_title(f"{strings[0]} - Raw Data")
+    axs[1].set_title(f"{strings[0]} - Moving Average ({window_size})")
+    for ax in axs:
+        ax.set_xlabel("Time")
+        ax.set_ylabel("EMG Signal")
+        ax.legend()
+    plt.tight_layout()
     plt.show()
 
 
@@ -134,8 +138,8 @@ def main() -> None:
     plot_data(
         total_data.iloc[:, 1],
         total_data.iloc[:, 2],
-        ["Total Data"])
-
+        ["Total Data"],
+        window_size=15)
 
 if __name__ == "__main__":
     main()
