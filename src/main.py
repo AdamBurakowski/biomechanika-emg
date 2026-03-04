@@ -184,6 +184,76 @@ def get_marked_data(
     pd.DataFrame
         A DataFrame containing the data corresponding to the specified marker.
     """
+
+    # helper function to find starting index and ending index of the marker
+    def find_index(
+            data_loc: pd.DataFrame,
+            timestamp: float
+            ) -> int:
+        """
+        Finds the index in the EMG data corresponding to a given timestamp.
+
+        Parameters
+        ----------
+        data : pd.DataFrame
+            The EMG data in which to find the index.
+        timestamp : float
+            The timestamp for which to find the corresponding index (seconds).
+
+        Returns
+        -------
+        int
+            The index in the EMG data corresponding to the given timestamp.
+        """
+        # find closest nearest indices
+        closest_indices: list[int] = []
+        for i in range(len(data_loc)):
+            candidate = data_loc.iloc[i, 0]
+            if not isinstance(candidate, str):
+                continue
+            match = re.match(r"(\d+)h: (\d+)m: (\d+)sec", candidate)
+            if match:
+                hours, minutes, seconds = map(int, match.groups())
+                total_seconds = hours * 3600 + minutes * 60 + seconds
+                if timestamp >= total_seconds >= timestamp-1:
+                    closest_indices.append(i)
+                if timestamp+1 >= total_seconds >= timestamp:
+                    closest_indices.append(i)
+                    break
+
+        print(closest_indices)
+        print(data_loc.iloc[0, closest_indices[0]: closest_indices[1]])
+        i_range: int = closest_indices[1] - closest_indices[0]
+        index = int(i_range * (timestamp - timestamp // 1))
+        return index + closest_indices[0]
+
+    def parse_timestamp(timestamp: str) -> float:
+        """
+        Parses a timestamp string in the format "hh:mm:ss" and converts it to
+        total seconds.
+
+        Parameters
+        ----------
+        timestamp : str
+            The timestamp string to be parsed.
+
+        Returns
+        -------
+        float
+            The total number of seconds represented by the timestamp.
+        """
+        time_pattern = r"(\d{2}):(\d{2}):(\d{2}).(\d{7})"
+        match = re.match(time_pattern, timestamp)
+        if match:
+            hours, minutes, seconds, mili = map(int, match.groups())
+            total_seconds = hours * 3600 + minutes * 60 + seconds + mili / 1e7
+            return total_seconds
+        else:
+            raise ValueError(f"Error: Time format is incorrect: {timestamp}")
+    start_time = marker.iloc[0, 2]
+    start_time = parse_timestamp(start_time)
+    print(f"{start_time=}")
+    # find_index(data, 18.867)
     return pd.DataFrame()
 
 
@@ -245,55 +315,33 @@ def main() -> None:
 
 def test():
     """
-    The main function of the script. It loads, preprocesses, and plots the EMG
-    data from the specified files.
+    Testing function of the script.
+    Used only for testing, will change a lot.
     """
     # load data
     extra_data = []
     total_data = pd.DataFrame()
+    total_data_list = []
     path = Path(__file__).parent / "data"
     for file in path.glob("*.txt"):
         print(f"Processing file: {file}")
-        if "uma" in file.stem:
+        if "uma" not in file.stem:
             print(f"Skipping file: {file}")
             continue  # process all files except correct ones
         stats, markers, data = load_data(file)
-        extra_data.append(pd.DataFrame(stats.iloc[1, :]).T)
+        extra_data.append([
+            pd.DataFrame(stats.iloc[1, :]).T,
+            pd.DataFrame(markers)
+            ])
         data = preprocess_data(data)
         total_data = pd.concat([total_data, data], ignore_index=True)
+        total_data_list.append(data)
 
-    # calculate sampling frequency (hh:mm:ss)
-    length_1 = extra_data[0].iloc[-1].values[-1]
-    print(f"Length of file 1: {length_1}")
-    time_pattern = r"(\d{2}):(\d{2}):(\d{2})"
-    match_1 = re.match(time_pattern, length_1)
-    if match_1:
-        hours_1, minutes_1, seconds_1 = map(int, match_1.groups())
-        total_time = hours_1 * 3600 + minutes_1 * 60 + seconds_1
-        total_samples = len(total_data)
-        fs = total_samples / total_time
-        print(f"Sampling frequency: {fs:.2f} Hz")
-    else:
-        print("Error: Time format is incorrect. Expected format is hh:mm:ss.")
-        return
-
-    # plot data
-    plot_data(
-        total_data.iloc[:, 1],
-        total_data.iloc[:, 2],
-        ["Total Data"],
-        fs,
-        window_size=15)
-    stft_plot(
-        total_data.iloc[:, 1],
-        fs,
-        ["Total Data - Channel 1"])
-    stft_plot(
-        total_data.iloc[:, 2],
-        fs,
-        ["Total Data - Channel 2"])
+    for i, data in enumerate(total_data_list):
+        for j in range(1, len(extra_data[i][1])):
+            get_marked_data(data, pd.DataFrame(extra_data[i][1].iloc[j, :]).T)
 
 
 if __name__ == "__main__":
-    main()
-    # test()
+    # main()
+    test()
